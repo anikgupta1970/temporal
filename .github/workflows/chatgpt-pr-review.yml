@@ -22,26 +22,29 @@ jobs:
       - name: Send Diff to OpenAI
         id: review
         run: |
-          DIFF_CONTENT=$(cat pr.diff | head -c 15000 | jq -Rs .)
+          DIFF_CONTENT=$(cat pr.diff | head -c 15000)
+          PAYLOAD=$(jq -n \
+            --arg diff "$DIFF_CONTENT" \
+            '{
+              model: "gpt-4o",
+              temperature: 0.2,
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a senior backend engineer reviewing a pull request."
+                },
+                {
+                  role: "user",
+                  content: ("Review this PR diff:\n" + $diff)
+                }
+              ]
+            }')
           RESPONSE=$(curl https://api.openai.com/v1/chat/completions \
             -s \
             -w "\n%{http_code}" \
             -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"model\": \"gpt-4o\",
-              \"messages\": [
-                {
-                  \"role\": \"system\",
-                  \"content\": \"You are a senior backend engineer reviewing a pull request.\"
-                },
-                {
-                  \"role\": \"user\",
-                  \"content\": \"Review this PR diff:\\n$DIFF_CONTENT\"
-                }
-              ],
-              \"temperature\": 0.2
-            }")
+            -d "$PAYLOAD")
           HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
           HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
           echo "Status Code: $HTTP_STATUS"
