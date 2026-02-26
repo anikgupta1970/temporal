@@ -31,11 +31,11 @@ jobs:
               messages: [
                 {
                   role: "system",
-                  content: "You are a senior backend engineer reviewing a pull request."
+                  content: "You are a senior backend engineer reviewing a pull request. Analyze the diff and return ONLY a JSON array, no explanation, no markdown, no backticks. Each item must have: \"path\" (file path), \"line\" (integer, the new line number from the diff), \"comment\" (your review comment). Example: [{\"path\":\"src/Main.java\",\"line\":10,\"comment\":\"Avoid hardcoded passwords\"}]"
                 },
                 {
                   role: "user",
-                  content: ("Review this PR diff:\n" + $diff)
+                  content: ("Review this PR diff and return only JSON:\n" + $diff)
                 }
               ]
             }')
@@ -58,14 +58,47 @@ jobs:
           echo "$REVIEW" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Post Comment to PR
+      - name: Post Inline Comments to PR
         uses: actions/github-script@v7
         with:
           script: |
-            const review = process.env.REVIEW;
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            const reviewRaw = process.env.REVIEW;
+
+            let comments;
+            try {
+              const cleaned = reviewRaw.replace(/```json|```/g, "").trim();
+              comments = JSON.parse(cleaned);
+            } catch (e) {
+              console.log("Failed to parse JSON, posting as single comment instead");
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: "## 🤖 Groq PR Review\n\n" + reviewRaw
+              });
+              return;
+            }
+
+            const { data: pullRequest } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: "## 🤖 Groq PR Review\n\n" + review
+              pull_number: context.issue.number
             });
+
+            const commitId = pullRequest.head.sha;
+
+            for (const item of comments) {
+              try {
+                await github.rest.pulls.createReviewComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.issue.number,
+                  commit_id: commitId,
+                  path: item.path,
+                  line: item.line,
+                  body: "🤖 **Groq Review:** " + item.comment
+                });
+              } catch (err) {
+                console.log("Could not post inline comment on line " + item.line + ": " + err.message);
+              }
+            }
