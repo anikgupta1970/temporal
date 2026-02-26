@@ -36,7 +36,7 @@ jobs:
                 }
               ]
             }')
-          RESPONSE=$(curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}" \
+          RESPONSE=$(curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}" \
             -s \
             -w "\n%{http_code}" \
             -H "Content-Type: application/json" \
